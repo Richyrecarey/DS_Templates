@@ -1,2 +1,2 @@
 # DS_Templates
-Jupyter and html templates for fast Data Science prototyping
+Jupyter (and html) templates for fast Data Science prototyping
