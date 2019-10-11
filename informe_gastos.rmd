@@ -1,0 +1,408 @@
+---
+title: "Informe Gastos"
+author: "Ricardo Recarey"
+date: "9/28/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Lista de cosas que hacer
+# Buscar en el del trabajo como ponia las fechas en el eje de las x
+library(lubridate)
+library(tidyverse)
+
+
+```
+
+## Informe de Gastos
+
+
+
+```{r, include = FALSE}
+
+# Funciones utilizadas en el paquete
+
+
+# Esta función coje el nombre del archivo (sin .csv) descargado de la web de Openbank y 
+# crea otro archivo .csv ya procesado
+
+######################################################################
+# Pura magia
+process_raw_csv <- function(file_name){
+  
+  file <- file(paste0(file_name, ".csv"))
+  con <- readLines(file)
+  
+  # Creamos nombre del nuevo archivo
+  new_file_name = paste0(file_name, "_R.csv")
+  
+  # Escribimos todo al nuevo archivo, ya procesado
+  sink(new_file_name)
+
+  for (i in seq_along(con)){
+    if (i %in% 1:10 | i %in% c(length(con)-1, length(con))) {next}
+    con[i] <- gsub("[.]","",con[i])
+    cat(substring(gsub(";;",";",con[i]), 2))
+    cat("\n")
+  }
+  
+  sink()
+  
+  close(file)
+  return(new_file_name)
+}
+######################################################################
+
+fun1 = function(x, lookup){
+  concepto <- x
+    for (i in 1:length(concepto)){
+      for (k in 1:length(names(lookup))){
+        for (j in 1:length(lookup[[k]])){
+          if(grepl(lookup[[k]][j], concepto[i],ignore.case = TRUE)){
+            concepto[i] = k
+          }
+        }
+      }
+    }
+    
+    len_lookup = length(names(lookup)) - 1
+    cc = as.character(1:len_lookup)
+    for (i in 1:length(concepto)){
+      if(!any(cc %in% concepto[i])){
+        concepto[i] = len_lookup+1
+      }
+    }
+    return(names(lookup)[as.integer(concepto)])
+}
+
+
+
+# Esta funcion coje la columna del concepto y el look up y devuelve transofmrada numericamente
+
+######################################################################
+transaction_type <- function(concepto, lookup){
+  
+  concepto <- my_data[["Concepto"]]
+  for (i in 1:length(concepto)){
+    for (k in 1:length(names(lookup))){
+      for (j in 1:length(lookup[[k]])){
+        if(grepl(lookup[[k]][j], concepto[i],ignore.case = TRUE)){
+          concepto[i] = k
+        }
+      }
+    }
+  }
+  
+  cc = as.character(1:11)
+  for (i in 1:length(concepto)){
+    if(!any(cc %in% concepto[i])){
+      concepto[i] = 12
+    }
+  }
+  return(as.integer(concepto))
+}
+######################################################################
+
+# lookup utilizado
+
+# La lista de transacciones es la siguiente:
+## 1 - Paycheck
+## 2 - Groceries
+## 3 - Leisure - Food
+## 4 - Technology
+## 5 - Transfers
+## 6 - House
+## 7 - Withdraw
+## 8 - Clothing
+
+lookup <- list(Paycheck = c("Indra Sistemas","INDRA SOLUCIONES", "ABONO"),
+               Groceries = c("GADIS","MERCADONA","CARREFOUR","FERNANDO","EROSKI","FROIZ","HERBOLARIO", "POCOMACO", "FOODSPRING", "LIDL"),
+               Leisure = c("BOMBONERA","CERVECERIA", "GOIKO", "HOSTEL","RYANAIR","IBERIA","LEVEL","LIZARRAN","PIADINA","MESON","HANGAR","TICKETMASTER","NORTHWEEK","CARRIS","MARINEDA","SODEXO","STARBUCKS", "LIZARRIN", "LEASK", "RUMBO","GALIPIZZA", "RESTAURANTE", "FILMS", "TERRACINA", "CREDITO", "VUELING", "BURGUER", "MCDONALD"),
+               Tech = c("AMZN","AMAZON","PCCOMPONENTES","SPOTIFY","GEARBEST","Amazon","MARKT","ITUNES", "PREPAGO"),
+               Transfers = c("BIZUM", "TRANSFERENCIA"),
+               House = c("RECIBO","CABLE","GAS","FARMACIA","ENGLISH","UNIVERSIDAD","IMPUESTOS","IKEA", "VODAFONE"),
+               Withdraw = c("CAJERO"),
+               Health = c("VITALDENT", "OPTICA", "FISIO", "MOSQUERA"),
+               Clothing = c("DECATHLON","Victor", "PULL","ZARA","TIRO", "MASSIMO", "SPRINTER", "ZALANDO","INDITEX", "LEFTIES", "BERSHKA"),
+               Gas = c("MACEIROA","CARVOLTA", "CEPSA", "RENFE", "E0148"),
+               Tolls = c("Arteixo", "APARCAMIENTO", "PARKING"),
+               Other = c("zzzzz"))
+
+
+```
+
+```{r}
+# Proceso de llamada
+origin_date = as.Date("01/07/2018", "%d/%m/%Y")
+# dia origen
+
+# Variables utilizadas en el informe:
+historico = 15
+
+# Nombre del archivo csv sacado de la web
+file_name = "expenses_20191010"
+
+# Procesamos el archivo con "process_raw_csv" y nos devuelve el nombre del archivo a abrir
+if (!file.exists(paste0(file_name,"_R.csv"))){
+  new_file_name = process_raw_csv(file_name)
+} else {
+  new_file_name = paste0(file_name,"_R.csv")
+}
+```
+
+
+```{r}
+# Abrimos dicho archivo, cogiendo la columna de "Concepto" como character
+my_data = read_csv2(new_file_name)
+
+# Convertimos Fecha.valor a tipo fecha, y los ordenamos
+my_data[['Fecha.Valor']] = as.Date(my_data[['Fecha Valor']], "%d/%m/%Y")
+my_data[['Fecha.Operacion']] = as.Date(my_data[['Fecha Operacion']], "%d/%m/%Y")
+
+my_data[['abs_importe']] = abs(my_data[['Importe']])
+
+# Transformamos el concepto con "Trasnaction_type"
+my_data[['Concepto']] = transaction_type(my_data[["Concepto"]], lookup)
+my_data[['Concepto']] = factor(my_data[['Concepto']], levels = 1:12, labels = names(lookup))
+
+
+# Agregamos la columna del dia de la semana, 1-7
+my_data[['Weekday.Valor']] = as.integer(format(my_data[['Fecha.Valor']], "%u") )
+my_data[['Weekday.Operacion']] = as.integer(format(my_data[['Fecha.Operacion']], "%u") )
+
+# Añadimos mes
+my_data[["Month"]] = format(my_data[['Fecha.Valor']], "%y%m")
+
+# Ordenamos el dataframe
+my_data = my_data[order(my_data[['Fecha.Valor']], decreasing = TRUE),]
+
+
+# Cojemos solo los últimos meses marcados en la variable 'historico'
+today = Sys.Date()
+y = today %m-% months(historico)
+threshold = y - as.integer(format(y, "%d")) + 1
+my_data = my_data[my_data[['Fecha.Valor']] >= threshold,]
+
+head(my_data)
+
+plot(my_data$Fecha.Valor, my_data$Saldo, type = "l",xlab = "Fecha", ylab = "Balance")
+grid(col = "grey")
+```
+
+
+```{r}
+# Versión tidy - historico meses!!
+dff = read_csv2(new_file_name)
+```
+
+
+```{r}
+## VERSIÓN TIDYVERSE
+date_from = as.Date("10/10/2018", "%d/%m/%Y")
+date_till = as.Date("10/10/2019", "%d/%m/%Y")
+# my_data[["Month"]] = format(my_data[['Fecha.Valor']], "%y%m")
+
+
+temp = dff %>% 
+  mutate(Fecha.Valor = as.Date(dff$`Fecha Valor`, "%d/%m/%Y")) %>%
+  mutate(Fecha.Operacion = as.Date(dff$`Fecha Operacion`, "%d/%m/%Y")) %>%
+  mutate(Concepto1 = fun1(dff$Concepto, lookup)) %>% 
+  select(c(-`Fecha Operacion`, -`Fecha Valor`)) %>%
+  # filter(Fecha.Operacion > (Sys.Date() %m-% months(historico)) - as.integer(format(y, "%d")) + 1) 
+  filter(Fecha.Operacion >= date_from  & Fecha.Operacion <= date_till)
+
+  
+```
+
+
+```{r}
+temp %>%
+  ggplot(aes(x = Fecha.Operacion, y = Saldo)) + 
+  geom_line() +
+  scale_x_date(date_labels = "%b-%Y") + xlab("") 
+
+temp %>%
+  ggplot(aes(x = Fecha.Operacion, y = Saldo)) + 
+  geom_line() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%W") + xlab("") 
+```
+
+
+
+```{r}
+
+temp %>% 
+  group_by(Concepto1) %>% 
+  summarise(suma = sum(Importe))
+
+temp %>% 
+  filter(Importe < 0) %>% 
+  group_by(Concepto1) %>% 
+  summarise(suma = sum(Importe))
+
+
+# Cuanto dinero esta en Other
+temp %>%
+  filter(Concepto1 == "Other") %>% 
+  print(n = Inf) %>% 
+  summarise(suma = sum(Importe))
+```
+
+```{r}
+# Cuanto ahorramos cada mes? Las fechas ya vienen de celdas pasadas
+# date_from = as.Date("22/09/2018", "%d/%m/%Y")
+# date_till = as.Date("22/09/2019", "%d/%m/%Y")
+
+       
+# Como cogemos un año, la columna mes NOMonth
+temp %>% 
+  mutate(Month = format(temp[['Fecha.Valor']], "%y%m")) %>%
+  group_by(Month) %>% 
+  summarise(suma = sum(Importe)) %>% 
+  ggplot() +  
+  geom_col(mapping = aes(x = Month,
+                         y = suma))
+  
+```
+
+
+
+
+```{r}
+ggplot(data = my_data[my_data[["Concepto"]] != "Paycheck" & my_data[["Importe"]] < 0,]) + 
+  geom_col(mapping = aes(x = Month,
+                         y = abs_importe,
+                         fill = Concepto))
+
+ggplot(data = my_data[my_data[["Concepto"]] != "Paycheck" & my_data[["Importe"]] < 0,]) + 
+  geom_bar(mapping = aes(x = Month,
+                         y = abs_importe,
+                         fill = Concepto),
+           stat="identity")
+```
+```{r}
+
+temp %>% 
+  mutate(Month = paste0(year(temp$Fecha.Valor) %% 100, month(temp$Fecha.Valor))) %>%
+  filter(Concepto1 == "Gas") %>% 
+  group_by(Month) %>% 
+  summarise(suma = sum(Importe)) %>% 
+  print(n = Inf)
+
+temp %>% 
+  filter(Concepto1 == "Gas") %>% 
+  select(Concepto, Importe)
+```
+
+
+
+```{r}
+p = ts(cumsum(my_data[my_data[["Concepto"]] != "Paycheck","abs_importe"]))
+plot(p)
+```
+
+```{r}
+temp_3 = my_data[my_data[["Concepto"]] != "Paycheck" & my_data[["Fecha.Valor"]] >= origin_date,c("Fecha.Valor","abs_importe")]
+head(temp_3)
+```
+
+```{r}
+temp_3[["abs_importe"]] = rev(cumsum(rev(temp_3[["abs_importe"]])))
+head(temp_3)
+plot(temp_3[["Fecha.Valor"]], temp_3[["abs_importe"]], type = "l")
+```
+
+```{r}
+temp %>% 
+  filter(Concepto1 != "Paycheck") %>% 
+  group_by(Fecha.Valor) %>% 
+  summarise(suma = sum(Importe)) %>% 
+  ggplot(aes(x = Fecha.Valor, y = suma)) + 
+  geom_line()
+
+aggregate_daily = temp %>% 
+  filter(Concepto1 != "Paycheck") %>% 
+  group_by(Fecha.Valor) %>% 
+  summarise(suma = sum(Importe)) %>% 
+  summarise(meann = mean(suma),
+            std = sd(suma)) %>% 
+  print()
+
+aggregate_daily2 = temp %>%
+  mutate(Week = week(temp$Fecha.Valor)) %>% 
+  filter(Concepto1 != "Paycheck" & Concepto1 != "Transfers") %>%
+  group_by(Week) %>% 
+  summarise(suma = sum(Importe)) %>% 
+  summarise(meann = mean(suma),
+            std = sd(suma)) %>% 
+  print()
+```
+
+
+
+```{r}
+# Dataframe con lo gastado en cada día, es decir, agregado por día, desde el dia origin
+daily_expenses = my_data[my_data[["Fecha.Valor"]] >= origin_date & my_data[["Concepto"]] != "Paycheck", c("abs_importe", "Fecha.Valor")]
+daily_expenses = aggregate(abs_importe ~ Fecha.Valor, daily_expenses, sum)
+plot(daily_expenses[[1]], daily_expenses[[2]], type = "l")
+
+daily_expenses[["abs_importe"]] = cumsum(daily_expenses[["abs_importe"]])
+
+head(daily_expenses)
+
+plot(daily_expenses[[1]], daily_expenses[[2]], type = "l")
+grid(col = "lightgrey")
+```
+```{r}
+y = lm(daily_expenses[[2]] ~ daily_expenses[[1]])
+
+```
+
+
+
+
+```{r}
+y = factor(my_data[['Concepto']], levels = 1:9, labels = c(names(lookup), "Other"))
+```
+
+```{r}
+library(microbenchmark)
+```
+
+
+```{r}
+# Comparamos vs datatable
+microbenchmark(
+temp %>%
+  mutate(Week = week(temp$Fecha.Valor)) %>% 
+  filter(Concepto1 != "Paycheck" & Concepto1 != "Transfers") %>%
+  group_by(Week) %>% 
+  summarise(suma = sum(Importe))
+)
+
+
+```
+```{r}
+library(data.table)
+temp_dt = temp
+setDT(temp_dt)
+
+```
+
+
+```{r}
+microbenchmark(
+  temp_aux = temp_dt[,Week := week(temp_dt$Fecha.Valor)],
+  temp_aux[Concepto1 != "Paycheck" & Concepto1 != "Transfers", sum(Importe), by = Week]
+)
+
+```
+```{r}
+temp %>%
+  mutate(Week = week(temp$Fecha.Valor)) %>% 
+  filter(Concepto1 != "Paycheck" & Concepto1 != "Transfers") %>%
+  group_by(Week) %>% 
+  summarise(suma = sum(Importe))
+```
+
