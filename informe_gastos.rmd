@@ -290,9 +290,13 @@ temp %>%
   summarise(suma = sum(Importe)) %>% 
   print(n = Inf)
 
+# DIESEL GASOLINA COMBUSTIBLE ANALYSIS
 temp %>% 
   filter(Concepto1 == "Gas") %>% 
-  select(Concepto, Importe)
+  mutate(next_day = lag(Fecha.Valor, 1)) %>% 
+  mutate(Diff = abs(Fecha.Valor -  lag(Fecha.Valor, 1))) %>%
+  select(Fecha.Valor, Importe, Diff) %>%
+  print()
 ```
 
 
